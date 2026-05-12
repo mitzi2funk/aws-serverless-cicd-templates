@@ -1,0 +1,13 @@
+# general
+.DS_Store
+.vscode
+
+# Node.js / Dependencies
+node_modules/
+.env
+.env.*.local
+
+# Build outputs
+dist/
+.next/
+out/

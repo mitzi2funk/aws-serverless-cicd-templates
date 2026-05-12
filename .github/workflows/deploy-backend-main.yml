@@ -1,0 +1,80 @@
+name: Backend CI/CD to Lambda for main
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**' # backendディレクトリ配下の変更時のみ実行
+  workflow_dispatch: # GitHub UIからの手動実行を許可
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true # 利用しているActionツールで推奨されているNode.js24を強制的に利用させる
+
+# OIDC認証のための権限設定
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-test-deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # AWS認証情報の設定 (OIDC)
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::<AWS Account ID>:role/<IAM Role名>
+          aws-region: ap-northeast-1 
+
+      # Node.js環境のセットアップとキャッシュ
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22' # package.jsonの@types/nodeに合わせて22を指定
+          cache: 'npm'
+          cache-dependency-path: './backend/package-lock.json'
+
+      # 依存関係のインストール
+      - name: Install dependencies
+        run: npm ci
+
+      # テストの実行 (jest)
+      - name: Run tests
+        run: npm run test
+
+      # esbuildによるビルド実行 (dist/配下へ出力)
+      - name: Build project
+        run: npm run build
+
+      # Lambdaデプロイ用のZIPファイル作成
+      # distディレクトリの中身のみをZIP化します
+      - name: Create deployment package (ZIP)
+        run: |
+          cd dist
+          zip -r ../deployment_package.zip ./*
+
+      # AWS Lambdaへのデプロイ
+      - name: Deploy to AWS Lambda
+        run: |
+          aws lambda update-function-code \
+            --function-name <Lambda Function名> \
+            --zip-file fileb://deployment_package.zip
+
+      # Slackへの結果通知
+      - name: Notify to Slack
+        uses: rtCamp/action-slack-notify@v2
+        if: always()
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }} # 同名のsecretsにSlack WebHook URLを設定しておく
+          SLACK_CHANNEL: '<通知先CH名>'
+          SLACK_TITLE: 'Backend CI/CD Deploy Result'
+          SLACK_COLOR: ${{ job.status == 'success' && 'good' || 'danger' }}
+          SLACK_MESSAGE: 'Deploy to Lambda completed with status: ${{ job.status }}'
