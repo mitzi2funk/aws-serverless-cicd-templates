@@ -29,7 +29,7 @@ jobs:
 
       # AWS認証情報の設定 (OIDC)
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::<AWS Account ID>:role/<IAM Role名>
           aws-region: ap-northeast-1 
